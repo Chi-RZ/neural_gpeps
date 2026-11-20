@@ -1,4 +1,4 @@
-# A training config (nngtn.config), as a usage demo: the 4x4 Hubbard model at U = 8 and half filling, in two
+# A training config (nngtn.io.load_config), as a usage demo: the 4x4 Hubbard model at U = 8 and half filling, in two
 # stages of 100 steps — a cold start and a continuation that carries the weights, the chains and the step-norm decay
 # on. Not a converged ground state.
 #

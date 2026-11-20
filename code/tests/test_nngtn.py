@@ -1,11 +1,10 @@
 """Package tests. CPU: the lattice's bond lists, the Hamiltonian's matrix elements, the recipe files, the chain
-formats, the training-config loader, the CPU multifrontal Pfaffian against dense references, the stripe momenta,
+formats, the training-config loader, the stripe momenta, the padded CNN trunk against quantax's own blocks,
 the re-evaluation at full precision, the psi-tilde re-read and the refusal of a non-finite step.
 GPU, each in its own process: the contraction against the dense Pfaffian (shared-memory and global kernels, with
 and without DMMA), the amplitude against the Gaussian PEPS built by brute force in Fock space, gradients against
 finite differences, float32 against float64, the Hamiltonian against quantax's, overflow handling, and a few VMC
 steps on a 4x4 torus with and without projection and t', with a continuation."""
-import contextlib
 import os
 from pathlib import Path
 
@@ -19,7 +18,8 @@ os.environ.setdefault("XLA_FLAGS", "--xla_gpu_shard_autotuning=false --xla_gpu_e
                       "false --xla_gpu_enable_triton_gemm=false --xla_gpu_enable_command_buffer=")
 
 import nngtn as ng  # noqa: E402
-from nngtn import chains, config, recipe  # noqa: E402
+from nngtn import io as nio  # noqa: E402
+from nngtn.pfaffian import recipe  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -91,10 +91,10 @@ def test_dmma_adds_only_the_dmma_flag():
 def test_chains_round_trip(tmp_path):
     rng = np.random.default_rng(0)
     s = np.where(rng.random((10, 2 * 12)) < 0.5, 1, -1).astype(np.int8)
-    assert np.array_equal(chains.unpack(**chains.pack(s)), s)
+    assert np.array_equal(nio.unpack(**nio.pack(s)), s)
     for name in ("c.npy", "c.npz"):
-        chains.write_chains(tmp_path / name, s)
-        assert np.array_equal(chains.read_chains(tmp_path / name), s)
+        nio.write_chains(tmp_path / name, s)
+        assert np.array_equal(nio.read_chains(tmp_path / name), s)
 
 
 def test_load_chains_takes_the_first_n_and_checks_the_sector(tmp_path):
@@ -107,21 +107,21 @@ def test_load_chains_takes_the_first_n_and_checks_the_sector(tmp_path):
     for row in s:
         row[rng.integers(4)] = 1
         row[4 + rng.integers(4)] = 1
-    chains.write_chains(tmp_path / "c.npz", s)
-    assert np.array_equal(chains.load_chains(tmp_path / "c.npz", 4), s[:4])
-    assert np.array_equal(chains.load_chains(tmp_path / "c.npz"), s)
+    nio.write_chains(tmp_path / "c.npz", s)
+    assert np.array_equal(nio.load_chains(tmp_path / "c.npz", 4), s[:4])
+    assert np.array_equal(nio.load_chains(tmp_path / "c.npz"), s)
     with pytest.raises(ValueError):
-        chains.load_chains(tmp_path / "c.npz", 11)
+        nio.load_chains(tmp_path / "c.npz", 11)
     bad = s.copy()
     bad[0, :4] = 1
-    chains.write_chains(tmp_path / "bad.npz", bad)
+    nio.write_chains(tmp_path / "bad.npz", bad)
     with pytest.raises(ValueError):
-        chains.load_chains(tmp_path / "bad.npz", 4)
+        nio.load_chains(tmp_path / "bad.npz", 4)
 
 
 @pytest.mark.parametrize("path", sorted((ROOT / "examples").glob("*.toml")), ids=lambda p: p.stem)
 def test_configs_load(path):
-    cfg = config.load(path)
+    cfg = nio.load_config(path)
     assert cfg["stage"] and cfg["stage"][-1]["lattice"] == {**cfg["lattice"], **cfg["stage"][-1].get("lattice", {})}
     for st in cfg["stage"]:
         assert st["contraction"]["dtype"] in ("float32", "float64")
@@ -163,30 +163,8 @@ def _dense_pfaffian(A):
     return sign, logabs
 
 
-def _brute_pfaffian(A):
-    """Pf A by expansion along the first row."""
-    n = A.shape[0]
-    if n == 0:
-        return 1.0
-    rest = lambda j: [k for k in range(1, n) if k != j]  # noqa: E731
-    return sum((-1)**(j+1)*A[0, j]*_brute_pfaffian(A[np.ix_(rest(j), rest(j))]) for j in range(1, n))
 
 
-def test_multifrontal_pfaffian_matches_dense_references():
-    """The CPU multifrontal factorisation (odd leaves, so pivots are delayed to the root) against a dense
-    completely pivoted Parlett-Reid and the first-row expansion, on a nested-dissection pattern."""
-    from nngtn.pfaffian.multifrontal import Front, factorise
-    rng = np.random.default_rng(1)
-    X = rng.standard_normal((8, 8))
-    A = X - X.T
-    A[np.ix_([0, 1, 2], [3, 4, 5])] = 0.0
-    A[np.ix_([3, 4, 5], [0, 1, 2])] = 0.0
-    want = _brute_pfaffian(A)
-    s, la = _dense_pfaffian(A)
-    assert np.isclose(s*np.exp(la), want, rtol=1e-12)
-    assert np.isclose(want**2, np.linalg.det(A), rtol=1e-10)
-    f = factorise(A, [Front(own=[6, 7], children=[Front(own=[0, 1, 2]), Front(own=[3, 4, 5])])], threshold=0.1)
-    assert np.isclose(f.sign*np.exp(f.logabs), want, rtol=1e-12)
 
 
 # ---- GPU ----------------------------------------------------------------------------------------------------------
@@ -261,29 +239,29 @@ def test_stripe_momenta():
     """The stripe wavevector q = pi/8 at t' = 0 and pi/4 at t' = -0.2: on a square torus the spin peaks sit at
     (pi -+ q, pi), (pi, pi -+ q) and the charge's at +-(2q, 0), +-(0, 2q); on a 16x4 strip only the x direction fits
     the momentum grid; a t' with no recorded wavevector, or a lattice where neither direction fits, raises."""
-    from nngtn import orderparams as op
-    spin, charge = op.stripe_momenta(16, 16, 0.0)
+    from nngtn import obs
+    spin, charge = obs.stripe_momenta(16, 16, 0.0)
     assert spin == ((7, 8), (9, 8), (8, 7), (8, 9)) and charge == ((2, 0), (14, 0), (0, 2), (0, 14))
-    spin, charge = op.stripe_momenta(16, 16, -0.2)
+    spin, charge = obs.stripe_momenta(16, 16, -0.2)
     assert spin == ((6, 8), (10, 8), (8, 6), (8, 10)) and charge == ((4, 0), (12, 0), (0, 4), (0, 12))
-    spin, charge = op.stripe_momenta(16, 4, 0.0)
+    spin, charge = obs.stripe_momenta(16, 4, 0.0)
     assert spin == ((7, 2), (9, 2)) and charge == ((2, 0), (14, 0))
     with pytest.raises(ValueError):
-        op.stripe_momenta(16, 16, -0.3)
+        obs.stripe_momenta(16, 16, -0.3)
     with pytest.raises(ValueError):
-        op.stripe_momenta(12, 4, 0.0)
+        obs.stripe_momenta(12, 4, 0.0)
     for odd in ((16, 5), (15, 16)):                       # pi is not on an odd side's momentum grid
         with pytest.raises(ValueError):
-            op.stripe_momenta(*odd, 0.0)
+            obs.stripe_momenta(*odd, 0.0)
 
 
 def test_dwave_terms_refuse_a_two_wide_torus():
     """On a side of 2 two bonds join the same pair of sites, which the d-wave bookkeeping cannot tell apart."""
-    from nngtn import orderparams as op
+    from nngtn import obs
     for shape in ((2, 4), (4, 2)):
         with pytest.raises(ValueError):
-            op.DwaveTerms(op.Torus(*shape))
-    assert len(op.DwaveTerms(op.Torus(4, 4)).F_keys) == 2 * 2 * 64     # 2 left bonds x 2 orientations x 64 right
+            obs.DwaveTerms(obs.Torus(*shape))
+    assert len(obs.DwaveTerms(obs.Torus(4, 4)).F_keys) == 2 * 2 * 64     # 2 left bonds x 2 orientations x 64 right
 
 
 def test_config_requires_the_keys_training_reads(tmp_path):
@@ -294,7 +272,7 @@ def test_config_requires_the_keys_training_reads(tmp_path):
         path = tmp_path / "short.toml"
         path.write_text(text.replace(drop, "", 1))
         with pytest.raises(ValueError, match="lacks"):
-            config.load(path)
+            nio.load_config(path)
 
 
 def test_apply_gives_each_library_its_recipe_and_fixes_card_and_dmma(monkeypatch):
@@ -376,19 +354,101 @@ def test_hamiltonian_matrix_elements_match_quantax_hubbard(Lx, Ly, nup, tprime):
 
 # ---------------------------------------------------------------- correctness of the GPU contraction
 
+# ---- the dense network matrix: the exact reference the GPU contraction is checked against ----------------------
+# A projected Gaussian tensor network's amplitude as ONE sparse skew matrix.
+#
+# THE STATE.  Site `s` is `exp(1/2 c_s^+ Z_s c_s^+)|0>` over its modes, `Z_s`
+# real skew; modes are numbered globally site after site. A bond joins mode `p`
+# of one site to mode `q` of another through `<0_pq| (1 + sigma c_q c_p)/sqrt2`.
+# The amplitude of a physical configuration is
+# `<0| c_{n_k} ... c_{n_1} prod_bonds(...) prod_s exp(...)|0>` over the occupied
+# physical modes `n_1 < ... < n_k`.
+#
+# THE MATRIX.  Wick's theorem gives
+#
+#     psi(n) = epsilon(n) * 2^{-b/2} * Pf(M),   M = (blockdiag_s Z_s + sigma-couplings)_{SS},
+#
+# with `S` every virtual mode and the occupied physical modes, in global order,
+# `M[p_a, q_b] = +sigma` in the bond's own orientation (`p_a` on the side the
+# operator names first), and `epsilon(n)` a sign of the occupied positions alone
+# (`configuration_sign`); the tests hold both to a brute-force Fock-space amplitude.
+# Every entry of `M`
+# is a raw site entry or a bond constant: nothing is divided, so there is no
+# chart, reference or pole — `Pf M` vanishes only where the amplitude does.
+
+def kept_modes(net, occupation):
+    """Global modes of `M`: every non-physical mode, and the occupied physical ones.
+
+    `occupation[s]` is a tuple of 0/1 per physical mode of site `s`.
+    """
+    keep = []
+    for s, m in enumerate(net.modes):
+        phys = dict(zip(net.physical[s], occupation[s]))
+        for local in range(m):
+            if local not in phys or phys[local]:
+                keep.append(net.global_mode(s, local))
+    return keep
+
+
+BOND_SIGN = 1  # M[p_a, q_b] = BOND_SIGN * sigma, in the bond's orientation
+
+
+def assemble(net, z_sites, occupation, dtype=float):
+    """`(M, keep)`: the skew matrix over the kept modes, entries copied, never divided."""
+    total = int(net.offsets[-1])
+    full = np.zeros((total, total), dtype=dtype)
+    for s, z in enumerate(z_sites):
+        o = net.offsets[s]
+        full[o:o+len(z), o:o+len(z)] = z
+    for p, q, sigma in net.bond_pairs():
+        full[p, q] += BOND_SIGN*sigma
+        full[q, p] -= BOND_SIGN*sigma
+    keep = kept_modes(net, occupation)
+    return full[np.ix_(keep, keep)], keep
+
+
+def configuration_sign(net, occupation):
+    """`epsilon(n)`: psi(n) = epsilon(n) 2^{-b/2} Pf(M).
+
+    Expanding every bond operator, `2^{b/2} psi = sum_K sigma_K chi(K) Pf(Z_{T_K})`
+    over the sets K of bonds whose pair is occupied, `chi(K)` the sign of putting
+    `c_{n_k}..c_{n_1} prod_{b in K} c_q c_p` in descending order (which
+    `<0|c_{t_m}..c_{t_1}|Phi> = Pf Z_T` needs). `Pf M` expands into the same
+    terms up to one K-independent factor, read at K = all bonds: `prod sigma`
+    times chi(all).
+    """
+    occupied = sorted(net.global_mode(s, l) for s in range(len(net.modes))
+                      for l, bit in zip(net.physical[s], occupation[s]) if bit)
+    sequence = occupied[::-1]
+    sign = 1
+    for sa, ma, sb, mb, sigma in net.bonds:
+        sequence += [net.global_mode(sb, mb), net.global_mode(sa, ma)]
+        sign *= sigma
+    # inversions relative to descending order
+    inversions = sum(1 for i in range(len(sequence)) for j in range(i+1, len(sequence))
+                     if sequence[i] < sequence[j])
+    return sign*(-1)**inversions
+
+
+def log_scale(net):
+    """`log 2^{-b/2}`, the bonds' normalisation."""
+    return -0.5*len(net.bonds)*np.log(2.0)
+
+
+
 def _contraction_case(L=4, nv=1, n=6, seed=0):
     """A small torus' contraction `f(free, bits)` and random inputs: site entries N(0, 0.5^2) (float64) and
     half-filled configurations as per-site bits; with the network for the dense reference."""
     import jax
-    from nngtn import model as mdl
-    from nngtn.pfaffian import layout as lay
+    from nngtn.state import _contraction, config_of_spins
+    from nngtn.pfaffian import tree as lay
     ng.make_sites(L, L, (L * L // 2, L * L // 2))
-    f = mdl._contraction(L, L, nv, 2, 0.05, 20, 2)
+    f = _contraction(L, L, nv, 2, 0.05, 20, 2)
     m = 2 + 4 * nv
     rng = np.random.default_rng(seed)
     free = 0.5 * rng.normal(size=(n, L * L, m * (m - 1) // 2))
     spins = _configs(L, n, seed)
-    config = np.asarray(jax.vmap(lambda x: mdl.config_of_spins(x, L * L))(spins))
+    config = np.asarray(jax.vmap(lambda x: config_of_spins(x, L * L))(spins))
     bits = np.stack([(config >> 1) & 1, config & 1], axis=-1).reshape(n, -1).astype(np.int32)
     net = lay.network_of_layout(lay.peps_layout(L, L, 2, nv, nv, True))
     return f, free, bits, net, m
@@ -397,7 +457,6 @@ def _contraction_case(L=4, nv=1, n=6, seed=0):
 def _dense_reference(net, m, free, bits):
     """`(sign, log|psi|)` of one configuration: psi = epsilon(n) 2^(-b/2) Pf(M), M assembled densely from the site
     entries and the bonds, its Pfaffian by completely pivoted Parlett-Reid in float64."""
-    from nngtn.pfaffian import network_matrix as nm
     iu = np.triu_indices(m, 1)
     z_sites = []
     for fv in free:
@@ -405,15 +464,15 @@ def _dense_reference(net, m, free, bits):
         z[iu] = fv
         z_sites.append(z - z.T)
     occupation = [tuple(int(b) for b in bits[2 * s:2 * s + 2]) for s in range(len(free))]
-    M, _ = nm.assemble(net, z_sites, occupation)
+    M, _ = assemble(net, z_sites, occupation)
     sign, logabs = _dense_pfaffian(M)
-    return sign * nm.configuration_sign(net, occupation), logabs + nm.log_scale(net)
+    return sign * configuration_sign(net, occupation), logabs + log_scale(net)
 
 
 def _check_against_dense(dtype, tol, global_from=None, dmma=False, L=4, nv=1, n=6, env=None):
     import jax
     import jax.numpy as jnp
-    from nngtn import recipe
+    from nngtn.pfaffian import recipe
     if global_from is not None:
         os.environ["PIVOTED_GLOBAL_FROM"] = str(global_from)     # every level at least this wide on the global kernels
     os.environ.update(env or {})                                 # other path knobs (read once a process)
@@ -469,7 +528,7 @@ def _gradient_errors(dtype, global_from=None, n_entries=12, L=4, nv=1, env=None)
     central finite differences of the float64 contraction at the same (dtype-rounded) entries."""
     import jax
     import jax.numpy as jnp
-    from nngtn import recipe
+    from nngtn.pfaffian import recipe
     if global_from is not None:
         os.environ["PIVOTED_GLOBAL_FROM"] = str(global_from)
     os.environ.update(env or {})
@@ -671,9 +730,9 @@ def _fock_amplitudes(Lx, Ly, nv, Zs):
     `{occupied physical modes in global order: amplitude}` and the physical modes `[[up, dn] per site]`. Only the
     layout's facts are read from the package: the local mode order and which leg modes a bond joins."""
     from scipy.linalg import expm
-    from nngtn.pfaffian import layout as lay
+    from nngtn.pfaffian import tree as lay
     N, m = Lx * Ly, 2 + 4 * nv
-    legs, phys, ends = [], [], {}
+    phys, ends = [], {}
     for s, (i, j) in enumerate((i, j) for i in range(Lx) for j in range(Ly)):
         sizes, names = lay.site_modes(i, j, Lx, Ly, 2, nv, nv, periodic=True)
         inds, off = lay.bond_names(i, j, Lx, Ly, periodic=True), 0
@@ -738,7 +797,7 @@ def test_amplitude_is_the_gaussian_peps_by_brute_force(Lx, Ly, nv, nup, ndn, req
     import itertools
     import jax
     import jax.numpy as jnp
-    from nngtn.model import config_of_spins, polar_pair
+    from nngtn.state import config_of_spins, polar_pair
     N, m = Lx * Ly, 2 + 4 * nv
     rng = np.random.default_rng(3)
     iu = np.triu_indices(m, 1)
@@ -814,6 +873,50 @@ def test_float32_network_stays_float32_under_x64():
         assert all(attribute in c for c in convs), precision
     assert jax.vmap(model.free_vectors)(s).dtype == jnp.float32
 
+
+@pytest.mark.parametrize("c,p", [(13, 16), (91, 92), (153, 160)])           # a small width and both presets'
+def test_padded_trunk_is_the_unpadded_trunk(c, p):
+    """The presets run every convolution at `pad_channels` (`ResConvTrunk._padded`: zero-padded weights, biases and
+    feature map, the RMSNorm over the real elements only); with the same parameters it is the same function as
+    quantax's own blocks (`pad_channels=None`): outputs and parameter gradients, in float64, to round-off. Every
+    parameter, biases included, is perturbed away from its initial value first."""
+    import equinox as eqx
+    import jax
+    import jax.numpy as jnp
+    import quantax as qtx
+    from nngtn.state import ResConvTrunk, scale_residual_branches
+    ng.make_sites(4, 4, (8, 8))
+
+    def trunk(pad):
+        qtx.set_random_seed(7)
+        net = scale_residual_branches(ResConvTrunk(3, c, (3, 3), dtype=jnp.float64, pad_channels=pad), 0.5)
+        params, static = eqx.partition(net, eqx.is_inexact_array)
+        leaves, tdef = jax.tree_util.tree_flatten(params)
+        keys = jax.random.split(jax.random.PRNGKey(3), len(leaves))
+        leaves = [x + 0.3 * jax.random.normal(k, x.shape, x.dtype) for x, k in zip(leaves, keys)]
+        return jax.tree_util.tree_unflatten(tdef, leaves), static
+
+    (p0, s0), (p1, s1) = trunk(None), trunk(p)
+    l0, l1 = jax.tree_util.tree_leaves(p0), jax.tree_util.tree_leaves(p1)
+    assert len(l0) == len(l1) and all(np.array_equal(a, b) for a, b in zip(l0, l1))     # the same parameters
+    assert sum(x.size for x in l0) == sum(x.size for x in jax.tree_util.tree_leaves(
+        eqx.filter(ResConvTrunk(3, c, (3, 3), dtype=jnp.float64), eqx.is_inexact_array)))  # stored c wide, not p
+    s = jnp.asarray(_configs(4, 3))
+
+    def out(params, static):
+        return jax.vmap(eqx.combine(params, static))(s)
+
+    def loss(params, static):
+        return jnp.sum(jnp.sin(out(params, static)))
+
+    with jax.default_matmul_precision("highest"):
+        y0, y1 = out(p0, s0), out(p1, s1)
+        g0, g1 = jax.grad(loss)(p0, s0), jax.grad(loss)(p1, s1)
+    assert y0.shape == y1.shape == (3, c, 4, 4) and y0.dtype == jnp.float64
+    np.testing.assert_allclose(np.asarray(y1), np.asarray(y0), rtol=1e-11, atol=1e-12)
+    for a, b in zip(jax.tree_util.tree_leaves(g0), jax.tree_util.tree_leaves(g1)):
+        np.testing.assert_allclose(np.asarray(b), np.asarray(a), rtol=1e-10, atol=1e-11)
+
 def test_config_rejects_unknown_keys(tmp_path):
     """A typo or an option the package does not have stops the load instead of being ignored."""
     text = (ROOT / "examples" / "hubbard_4x4.toml").read_text()
@@ -823,7 +926,7 @@ def test_config_rejects_unknown_keys(tmp_path):
         path = tmp_path / "bad.toml"
         path.write_text(bad)
         with pytest.raises(ValueError, match="unknown keys"):
-            config.load(path)
+            nio.load_config(path)
 
 
 def test_a_non_finite_step_stops_training():

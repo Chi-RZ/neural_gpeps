@@ -196,7 +196,7 @@ struct Smem {
 
 // The sources of a level whose fronts assemble themselves (front_fwd_fused's tables, see there); by value
 // The fused kernels' inputs: the sources (the flat free vector, the source levels' contribution blocks with their
-// rows' validity and modes, the occupation) and the level's tables — the assembly PIECES (fast._pieces: per
+// rows' validity and modes, the occupation) and the level's tables — the assembly PIECES (contract._pieces: per
 // front, each site's packed Z block and each child's contribution block with a slot map), the bonds' constants
 // (bd_pq (NB, 2) slot pairs p < q, bd_val), and the slots' alive and mode sources (asrc, msrc)
 struct FusedIn {
@@ -2637,7 +2637,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(FrontBackwardS, BackwardS,
 // The sign's permutation parity, one block a configuration: the alive modes in increasing id are sent,
 // in order, to the valid pivots (mode ids, -1 absent) of the levels' pivot arrays taken in order; a dead mode and a
 // pivot past the alive count are fixed points; the parity is (n - cycles) mod 2, the cycles by pointer doubling in
-// shared memory. The value batched._parity_modes computes, without its concatenation, scatters and gathers.
+// shared memory. The value contract._parity_modes computes, without its concatenation, scatters and gathers.
 constexpr int PAR_MAX_LEVELS = 16;
 constexpr int PAR_THREADS = 512;
 constexpr int PAR_CHUNK = 32;              // modes a thread at most: n <= PAR_THREADS * PAR_CHUNK = 16384

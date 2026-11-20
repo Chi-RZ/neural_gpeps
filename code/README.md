@@ -40,26 +40,25 @@ network's numerical algorithms.
 
 ```
 nngtn/
-    lattice.py        the periodic lattice, nearest and next-nearest bonds
-    network.py        the residual CNN trunk
-    model.py          NeuralGTN, NETWORKS, build_model, make_state, load_weights / save_weights
-    symmetry.py       projections by name
-    pfaffian/         the contraction: layout, network matrix, dissection tree, plan, CUDA kernels
-    recipe.py         the kernels' tuned settings per card (recipes/*.env)
-    vmc.py            Hamiltonian, sampler, AdamSR + LSMR, step-norm cap, the training loop `run`
+    system.py         the problem: periodic lattice and bonds, the t-t'-U Hamiltonian, symmetry projections by name
+    state.py          the NN-GPEPS wavefunction: the residual CNN trunk, NeuralGTN, build_model, make_state,
+                      load_weights / save_weights
+    vmc.py            sampler, AdamSR + LSMR, step-norm cap, the training loop `run`
     measure.py        the measurement loop
-    orderparams.py    the observables and their jackknife assembly
-    chains.py         chains in and out
-    config.py         training configs (TOML)
-    distributed.py    several nodes, one process a node
-    cli/              the commands nngtn-train and nngtn-measure
+    obs.py            the observables and their jackknife assembly
+    io.py             chains in and out, training configs (TOML)
+    pfaffian/         the contraction: tree.py builds the contraction tree once (layout, nested dissection,
+                      plan), contract.py evaluates each amplitude on it, front_cuda.py/.cu the GPU kernels,
+                      recipe.py their tuned settings per card (recipes/*.env)
+    cli/              the commands nngtn-train and nngtn-measure, and distributed.py (several nodes, one
+                      process a node)
 examples/             a 4x4 training from scratch
 tests/                the package tests
 ```
 
 ## Training
 
-A training is a TOML file of stages (`nngtn.config`), each with its lattice, start (random or an earlier stage's
+A training is a TOML file of stages (`nngtn.io.load_config`), each with its lattice, start (random or an earlier stage's
 weights), chains, step-norm cap, samples and contraction. The weights carry over to any lattice size.
 
 ```bash
@@ -100,8 +99,7 @@ A configuration is `+-1` occupations, spin-up sites first, site `(i, j)` at inde
 
 ## Tests
 
-`tests/test_nngtn.py`. CPU: lattice bonds, recipe files, chain formats, configs, the CPU Pfaffian against dense
-references, the psi-tilde re-read. GPU, each in its own process: the contraction against the dense Pfaffian and the
+`tests/test_nngtn.py`. CPU: lattice bonds, recipe files, chain formats, configs, the padded CNN trunk against quantax's blocks, the psi-tilde re-read. GPU, each in its own process: the contraction against the dense Pfaffian and the
 amplitude against the Gaussian PEPS built by brute force in Fock space, gradients against finite differences,
 float32 against float64, the Hamiltonian against quantax's, overflow handling, a few VMC steps. Run them with one
 card visible (quantax uses every visible device): `CUDA_VISIBLE_DEVICES=0 uv run pytest -q tests`, about 15 minutes

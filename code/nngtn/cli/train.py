@@ -2,9 +2,9 @@
 
     nngtn-train config.toml --stage <id> --out runs/x          (or: python -m nngtn.cli.train ...)
 
-A config (`nngtn.config`) lists the stages of a training, in order: each with its lattice, its start (random
-weights or the weights an earlier stage ended with), its chains, its step-norm schedule, its samples and sweeps and its
-contraction. A stage reads its start from `<out>/<start stage>/weights.eqx` (or `--start`) and, when
+A config (`nngtn.io.load_config`) lists the stages of a training, in order: each with its lattice, its start
+(random weights or the weights an earlier stage ended with), its chains, its step-norm schedule, its samples and
+sweeps and its contraction. A stage reads its start from `<out>/<start stage>/weights.eqx` (or `--start`) and, when
 `chains = "previous"`, its chains from `<out>/<start stage>/chains.npy` (or `--chains-in`), and writes
 `<out>/<stage>/trajectory.json` (every step), `weights.eqx` (every `save_every` steps and at the end) and
 `chains.npy` (every step).
@@ -12,7 +12,7 @@ contraction. A stage reads its start from `<out>/<start stage>/weights.eqx` (or 
 Overrides for a smoke test (`--steps`, `--samples`, `--sweeps`, `--thermal`, `--chains-thermal`, `--save-every`,
 `--max-parallel`)
 are recorded in the trajectory. Several GPUs and nodes: launch one process per node under `srun`
-(`nngtn.distributed`); `samples` is the total over all cards and `max_parallel` is per card.
+(`nngtn.cli.distributed`); `samples` is the total over all cards and `max_parallel` is per card.
 
 Unless `XLA_FLAGS` is set, the XLA flags below are set before jax starts: the autotuners and command buffers off,
 so XLA makes the same choices every run; bit-identical runs additionally need `--xla_gpu_deterministic_ops=true`
@@ -29,7 +29,7 @@ XLA_FLAGS = ("--xla_gpu_shard_autotuning=false --xla_gpu_experimental_enable_fus
              "--xla_gpu_enable_triton_gemm=false --xla_gpu_enable_command_buffer=")
 os.environ.setdefault("XLA_FLAGS", XLA_FLAGS)
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
-from .. import config as cfgmod  # noqa: E402
+from ..io import config_stage, load_config  # noqa: E402
 
 
 def main(argv=None):
@@ -46,13 +46,13 @@ def main(argv=None):
     ap.add_argument("--card", choices=("hopper", "a100"), default=None, help="kernel recipe (default: detected)")
     args = ap.parse_args(argv)
 
-    from .. import distributed
+    from . import distributed
     distributed.initialize()
     import jax
     import nngtn as ng
 
-    config = cfgmod.load(args.config)
-    st = cfgmod.stage(config, args.stage)
+    config = load_config(args.config)
+    st = config_stage(config, args.stage)
     overrides = {k: getattr(args, k) for k in ("steps", "samples", "sweeps", "thermal", "chains_thermal",
                                                "save_every", "max_parallel") if getattr(args, k) is not None}
     st = {**st, **overrides}

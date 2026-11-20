@@ -17,9 +17,10 @@ warm-up; the paper quotes the fastest batch's median per amplitude.
 float32) and random half-filled occupations, identical between the arms: float32 (DMMA recipe) and float64, at
 Nv = 3 and 4, two-site leaves, threshold 0.05, 20 delay slots.
 
-Every (size, precision) cell runs in its own process: a process builds one kernel library (`recipe.apply`). Each
-cell writes `<out>-<mode>-L<L>-<dtype>[-nv<Nv>].json`. Run on an otherwise idle card; the paper's numbers
-(`timing/amplitude.csv`, `timing/precision.csv`) are an A100-SXM4-80GB's on NERSC Perlmutter.
+Every (size, precision) cell runs in its own process: a process builds one kernel library
+(`pfaffian.recipe.apply`). Each cell writes `<out>-<mode>-L<L>-<dtype>[-nv<Nv>].json`. Run on an otherwise idle
+card; the paper's numbers (`timing/amplitude.csv`, `timing/precision.csv`) are an A100-SXM4-80GB's on NERSC
+Perlmutter.
 """
 import argparse
 import json
@@ -94,7 +95,7 @@ def cell(args):
     import numpy as np
 
     import nngtn as ng
-    from nngtn import model as mdl
+    from nngtn.state import _contraction, config_of_spins
     L, dtype = args.L, args.dtype
     dmma = dtype == "float32" and not args.no_dmma
     nv = args.nv_one
@@ -107,11 +108,11 @@ def cell(args):
     row["settings"] = {k: v for k, v in os.environ.items() if k.startswith(("PIVOTED_", "NNGTN_"))}
     if args.mode == "amplitude":
         cnn = jax.jit(jax.vmap(model.free_vectors))
-        config = jax.vmap(lambda s: mdl.config_of_spins(s, model.n_sites, model.d))
+        config = jax.vmap(lambda s: config_of_spins(s, model.n_sites, model.d))
         contraction = jax.jit(jax.vmap(lambda c, f: model.log_psi(c, f)))
         whole = jax.jit(jax.vmap(model))
     else:
-        f = mdl._contraction(L, L, nv, 2, args.threshold, args.delay_slots, 2)
+        f = _contraction(L, L, nv, 2, args.threshold, args.delay_slots, 2)
         contraction = jax.jit(jax.vmap(lambda x, o: f(x, o)[:2]))
     dt = jnp.dtype(dtype)
     for B in (list(map(int, args.batches.split(","))) if args.batches else default_batches(args.mode, L)):

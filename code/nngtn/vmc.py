@@ -1,8 +1,5 @@
-"""Variational Monte Carlo for the t-t'-U Hubbard model with quantax: the Hamiltonian, the sampler, the SR optimiser
-(AdamSR with an LSMR solve) and the step-norm cap, and the step loop.
-
-    H = -t sum_<ij>,sigma (c+_i c_j + h.c.) - t' sum_<<ij>>,sigma (c+_i c_j + h.c.) + U sum_i n_i,up n_i,dn
-        - mu sum_i n_i
+"""Variational Monte Carlo for the t-t'-U Hubbard model (`system.hamiltonian`) with quantax: the sampler, the SR
+optimiser (AdamSR with an LSMR solve) and the step-norm cap, and the step loop.
 
 The construction order is fixed (the Hamiltonian, the projected `Variational` state, the chains — built last, as
 their seed resets quantax's global key — the solver and the optimiser), and so is the step (sweep, AdamSR's step,
@@ -15,43 +12,13 @@ import time
 
 import numpy as np
 
-from .lattice import diagonal_bonds, make_sites, square_bonds
+from .system import diagonal_bonds, hubbard_operator, square_bonds
 
-__all__ = ["make_sites", "square_bonds", "diagonal_bonds", "hamiltonian", "hubbard_operator", "u1_mix_sampler",
-           "build_solver",
-           "build_optimiser", "step_cap", "scale_step", "run"]
-
-
-# ---- Hamiltonian --------------------------------------------------------------------------------------------------
-def hubbard_operator(bonds, n_sites, t=1.0, u=0.0, mu=0.0, bonds2=(), t2=0.0):
-    """The Hubbard Hamiltonian as a quantax `Operator`, built from explicit bond lists (a repeated pair is counted
-    twice): hopping `-t` on `bonds`, `-t2` on `bonds2` (the t' of the t-t' model on the diagonals, quantax's
-    `Hubbard(t=[t, t2])` sign convention), `U n_up n_dn` on every site, `-mu n`."""
-    from quantax.operator import annihilate_d, annihilate_u, create_d, create_u, number_d, number_u
-
-    def hop(i, j):
-        return (create_u(i) @ annihilate_u(j) + create_u(j) @ annihilate_u(i)
-                + create_d(i) @ annihilate_d(j) + create_d(j) @ annihilate_d(i))
-
-    H = 0
-    for i, j in bonds:
-        H = H + (-t) * hop(int(i), int(j))
-    if t2:
-        for i, j in bonds2:
-            H = H + (-t2) * hop(int(i), int(j))
-    if u:
-        H = H + u * sum(number_u(i) @ number_d(i) for i in range(n_sites))
-    if mu:
-        H = H + (-mu) * sum(number_u(i) + number_d(i) for i in range(n_sites))
-    return H
+__all__ = ["at_precision", "u1_mix_sampler", "chains_sampler", "build_solver", "build_optimiser", "step_cap",
+           "scale_step", "run"]
 
 
-def hamiltonian(Lx, Ly, *, t=1.0, u=8.0, tprime=0.0, mu=0.0):
-    """`hubbard_operator` on the periodic Lx x Ly torus (`lattice.square_bonds`, and `diagonal_bonds` for t')."""
-    return hubbard_operator(square_bonds(Lx, Ly), Lx * Ly, t=t, u=u, mu=mu,
-                            bonds2=diagonal_bonds(Lx, Ly) if tprime else (), t2=tprime)
-
-
+# ---- the local energy at a chosen precision -----------------------------------------------------------------------
 def at_precision(H, precision, dual=None):
     """`H` whose `Oloc` runs under the matmul `precision` (`"highest"`), the sampler's psi dropped so psi(s) and
     every connected psi(s') are evaluated together at that precision; `Oloc` then fills the reweighting factor
@@ -111,12 +78,12 @@ def u1_mix_sampler(state, n_samples, thermal_steps, sweep_steps, seed=0):
 
 def chains_sampler(state, n_samples, *, thermal, sweeps, seed=0, chains_in=None, chains_thermal=-1):
     """`u1_mix_sampler`, burnt in from random states for `thermal` proposals a chain, or started from saved chains
-    (`chains_in`: a path or an array, `chains.load_chains`) and re-thermalised for `chains_thermal` proposals
+    (`chains_in`: a path or an array, `io.load_chains`) and re-thermalised for `chains_thermal` proposals
     (`-1`: one `sweeps`)."""
     import jax.numpy as jnp
     if chains_in is None or (isinstance(chains_in, str) and not chains_in):
         return u1_mix_sampler(state, n_samples, thermal_steps=thermal, sweep_steps=sweeps, seed=seed)
-    from .chains import load_chains
+    from .io import load_chains
     if isinstance(chains_in, (str, bytes)) or hasattr(chains_in, "__fspath__"):
         spins0 = load_chains(chains_in, n_samples)
     else:
@@ -396,7 +363,7 @@ def run(model, *, n_particles, t=1.0, u=8.0, tprime=0.0, mu=0.0, symm=None, step
     local energies (clipped at `clip` sigma in the gradient only) and log-derivatives (LSMR), the step scaled under
     the ceiling `step_cap(step + cap_step_offset)`, the update applied.
 
-    * `symm` projects the state (`symmetry.build_symm`); `max_parallel` counts configurations, each evaluated at
+    * `symm` projects the state (`system.build_symm`); `max_parallel` counts configurations, each evaluated at
       every image of the group.
     * `chains_in` starts the chains from saved ones (path or array) re-thermalised for `chains_thermal` proposals
       (`-1`: one `sweeps`) instead of a `thermal` burn-in from random states; `chains_out` writes the chains (`.npy`
@@ -419,14 +386,14 @@ def run(model, *, n_particles, t=1.0, u=8.0, tprime=0.0, mu=0.0, symm=None, step
     import quantax as qtx
     from quantax.utils import to_replicated_numpy
 
-    from .chains import save_chains
-    from .model import make_state
+    from .io import save_chains
+    from .state import make_state
 
     Lx, Ly = model.Lx, model.Ly
     sites = qtx.get_sites()
     if (sites.Nsites, tuple(sites.Nparticles or ())) != (Lx * Ly, tuple(n_particles)):
         raise ValueError(f"quantax's lattice ({sites.Nsites} sites, {sites.Nparticles}) is not the model's "
-                         f"{Lx}x{Ly} at {tuple(n_particles)}: call lattice.make_sites first")
+                         f"{Lx}x{Ly} at {tuple(n_particles)}: call make_sites first")
     n_sites = Lx * Ly
     bonds = square_bonds(Lx, Ly)
     bonds2 = diagonal_bonds(Lx, Ly) if tprime else ()

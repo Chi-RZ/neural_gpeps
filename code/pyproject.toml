@@ -34,8 +34,7 @@ build-backend = "setuptools.build_meta"
 packages = ["nngtn", "nngtn.pfaffian", "nngtn.cli"]
 
 [tool.setuptools.package-data]
-"nngtn.pfaffian" = ["*.cu"]
-"nngtn" = ["recipes/*.env"]
+"nngtn.pfaffian" = ["*.cu", "recipes/*.env"]
 
 [tool.uv]
 # Every library at the version the paper's runs used. The CUDA libraries matter for reproducibility: cuDNN and cuBLAS

@@ -1,10 +1,10 @@
 """The network matrix's Pfaffian along the elimination tree (Appendix A), each tree level's fronts eliminated by
 one CUDA call.
 
-The plan, the compaction of leftover candidates into the parent's delay slots
-and the sign are `batched`'s; the elimination moves into `front_cuda` — a
-level's fronts padded to its widest (`n_L`, dead padding slots) and stacked,
-one thread block each, the front staying in shared memory for all its steps.
+The plan comes from `tree.build`; leftover candidates go into the parent's delay slots, and the sign is
+assembled here from the pivots' signs and the permutation parity. The elimination runs in `front_cuda`: a
+level's fronts padded to its widest (`n_L`, dead padding slots) and stacked, one thread block each, the front
+staying in shared memory for all its steps.
 The gradient is the kernel's own backward pass.
 
 The glue is per LEVEL, not per front: a level's fronts assemble themselves in
@@ -15,6 +15,9 @@ nothing is masked in memory. The kernel
 itself compacts what is left into the contribution block the parent reads,
 `(nf, Dmax + Umax, Dmax + Umax)`: up to `Dmax` delayed rows (the valid ones
 first), then the update rows, zero-padded — no front matrix comes back.
+
+The fallback parity (`_parity_modes`) is the jax version of the parity kernel, used where that kernel does not
+fit the device.
 """
 from __future__ import annotations
 
@@ -24,9 +27,34 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 import numpy as np
 
-from .batched import _parity_modes
 from .front_cuda import fused_fn, max_width, parity_fits, parity_fn
 
+
+def _parity_modes(sequence, alive):
+    """The parity of a pivot sequence: the valid entries of `sequence` (-1 = absent) are the modes pivoted, in
+    order, and `alive` (n_modes,) marks the modes that can appear — a complete elimination pivots every alive mode
+    once. The parity is that of the permutation taking the alive modes in increasing order to the order pivoted:
+    the k-th alive mode (by a prefix sum over the mode ids) is sent to the k-th pivot; a dead mode is a fixed point.
+    Cycles by pointer doubling over the n_modes entries, (n_modes - cycles) mod 2. With the elimination incomplete
+    the value is meaningless — the caller zeroes the amplitude then."""
+    S, n = sequence.shape[0], alive.shape[0]
+    if S == 0:
+        return jnp.zeros((), jnp.int32)
+    valid = sequence >= 0
+    pos = jnp.cumsum(valid)-1                                   # the valid entries' order
+    seq = jnp.full((n,), -1, jnp.int32).at[jnp.where(valid, pos, n)].set(sequence.astype(jnp.int32), mode="drop")
+    rank = jnp.cumsum(alive)-1                                  # the alive modes' order by id
+    ids = jnp.arange(n, dtype=jnp.int32)
+    mode_of_rank = jnp.full((n,), -1, jnp.int32).at[jnp.where(alive, rank, n)].set(ids, mode="drop")
+    # perm[the k-th alive mode] = the k-th pivot; dead modes and absent pivots leave the identity
+    target = jnp.where(seq >= 0, mode_of_rank, n)               # the k-th alive mode for every k with a pivot
+    perm = ids.at[target].set(jnp.where(seq >= 0, seq, 0), mode="drop")
+    low, nxt = ids, perm
+    for _ in range(max(1, int(np.ceil(np.log2(max(n, 2)))))):
+        low = jnp.minimum(low, low[nxt])
+        nxt = nxt[nxt]
+    cycles = jnp.sum(low == ids)
+    return (n-cycles) % 2
 
 
 def levels_of(plan, leaf_cutoff=0):
@@ -279,7 +307,7 @@ def log_amplitude(plan, threshold):
     warp_max = int(os.environ.get("PIVOTED_WARP_MAX", "96"))
     # the sign's permutation parity: one kernel a configuration taking every level's pivot array
     # (front_cuda.parity_fn) where its four arrays a mode fit this device's shared memory (at most 16384 modes);
-    # else batched._parity_modes, which ranks the alive modes by a prefix sum and counts the cycles of the induced
+    # else _parity_modes (above), which ranks the alive modes by a prefix sum and counts the cycles of the induced
     # permutation in jax ops (the same value)
     n_free = sum(k * (k - 1) // 2 for k in plan.modes)    # each site's strict upper triangle
     physical = np.asarray(plan.physical, np.int32)
@@ -318,7 +346,7 @@ def log_amplitude(plan, threshold):
         contrib = []        # per level: (C, valid, mode)
         acc = free.reshape(-1)   # the free vector's gradient accumulator threaded through the levels
         for lv in levels:
-            nf, n = len(lv.fronts), lv.n
+            n = lv.n
             glob = (n > wmax and not (shared_to > 0 and n <= shared_to)) or (gfrom > 0 and n >= gfrom)
             gbwd = (not glob) and ((gbfrom > 0 and n >= gbfrom) or n > wmax)   # above the bound the shared backward cannot run
             if lv.src_levels:     # the source levels' blocks, rows' validity and modes, concatenated flat

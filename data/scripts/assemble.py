@@ -1,5 +1,5 @@
 """A measurement's results from its per-sweep series, no GPU: block-jackknife over sweeps of the energy and variance,
-the d-wave pair correlation Delta^2_SC and the stripe spin order M^2_str (`nngtn.orderparams.assemble`).
+the d-wave pair correlation Delta^2_SC and the stripe spin order M^2_str (`nngtn.obs.assemble`).
 
     uv run python scripts/assemble.py proj16x4-t0-nv4               # print, and compare with results.json
     uv run python scripts/assemble.py proj16x4-t0-nv4 --write       # (re)write results.json
@@ -77,11 +77,11 @@ def agree(a, b, rtol=1e-10):
 
 def assemble(name):
     import numpy as np
-    from nngtn import orderparams as op
+    from nngtn import obs
     row = state(name)
     series = dict(np.load(path(row, "measurement_series")))
     Lx, Ly = int(series["Lx"]), int(series["Ly"])
-    res = op.assemble(series, Lx, Ly, tprime=float(series["tprime"]))
+    res = obs.assemble(series, Lx, Ly, tprime=float(series["tprime"]))
     scalars = {k: (float(res[k]) if k not in ("nsweeps", "n_far") else int(res[k])) for k in SCALARS}
     scalars["k_alpha"] = np.asarray(res["k_alpha"]).tolist()
     scalars["q_c"] = np.asarray(res["q_c"]).tolist()

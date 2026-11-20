@@ -12,7 +12,6 @@ os.environ.setdefault("XLA_FLAGS", "--xla_gpu_shard_autotuning=false --xla_gpu_e
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]

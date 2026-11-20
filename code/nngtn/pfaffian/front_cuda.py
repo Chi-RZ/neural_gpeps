@@ -11,18 +11,64 @@ Two libraries, one scalar each: `double` (the default) and `float` (`-DPIVOTED_R
 `dtype` and runs the library of that scalar — every front, contribution block, multiplier and
 record in it, log|psi| and sign too (accumulated in double inside the kernels, stored in the scalar). The float
 library closes its global-memory panels on the CUDA cores, or on the fp64 tensor cores when built with
-`PIVOTED_GCLOSE_DMMA` (`dmma=True`, see `recipe`).
+`PIVOTED_GCLOSE_DMMA` (`dmma=True`, see `recipe.py`).
 """
 from __future__ import annotations
 
 import ctypes
 import functools
+import fcntl
 import hashlib
 import os
 import shlex
+import subprocess
 from pathlib import Path
 
 import numpy as np
+
+# ---- the build lock ------------------------------------------------------------------------------------------------------
+# Compile a CUDA library once across every process asking for it (a file lock, a temporary file renamed into
+# place).
+
+def compile_locked(lib, command, needed=None, *, prepare=None, run=None):
+    """Compile `lib` once across every process asking for it: `command` is the
+    compiler's argument list WITHOUT its output (`-o` goes in after the compiler's
+    name, naming a temporary file beside `lib` that is renamed into place when
+    the compiler exits 0, so no reader ever sees a partial library; the source
+    stays the last argument); `needed()` says whether
+    a build is due (default: `lib` missing) and is asked again under the lock,
+    so a process that waited while another built finds nothing left to do;
+    `prepare()` runs under the lock before the compiler (a generated header).
+    The lock is `flock` on `<lib>.lock`; a filesystem that refuses it still gets
+    the temporary-and-rename, which alone leaves only the double compile."""
+    lib = Path(lib)
+    needed = needed or (lambda: not lib.exists())
+    if not needed():
+        return lib
+    run = run or subprocess.run
+    lib.parent.mkdir(parents=True, exist_ok=True)
+    with open(lib.with_name(lib.name + ".lock"), "a+") as fh:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            locked = True
+        except OSError:
+            locked = False
+        try:
+            if locked and not needed():
+                return lib
+            if prepare is not None:
+                prepare()
+            tmp = lib.with_name(f"{lib.name}.{os.getpid()}.tmp")
+            try:
+                run([command[0], "-o", str(tmp), *command[1:]], check=True)
+                os.replace(tmp, lib)
+            finally:
+                tmp.unlink(missing_ok=True)
+        finally:
+            if locked:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+    return lib
+
 
 _SOURCE = Path(__file__).with_suffix(".cu")
 
@@ -51,7 +97,6 @@ def library_path(real="double"):
     root = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home()/".cache")))
     lib = root/"nngtn_kernels"/checkout/key.hexdigest()[:16]/f"front_{real}.so"
     # one process of a job compiles, the rest wait and load
-    from .build import compile_locked
     return compile_locked(lib, [nvcc, "-O3", "-std=c++17", "-arch=sm_80", "-shared",
                                 "-Xcompiler", "-fPIC", f"-I{ffi.include_dir()}", *defs, *shlex.split(flags), str(_SOURCE)])
 
@@ -79,7 +124,7 @@ def _load(real="double"):
 
 @functools.lru_cache(None)
 def parity_fn(real="double"):
-    """`parity(alive (n_modes,) int8, *pivots) -> () int32`: the sign's permutation parity of batched._parity_modes
+    """`parity(alive (n_modes,) int8, *pivots) -> () int32`: the sign's permutation parity of contract._parity_modes
     — the alive modes in increasing id sent, in order, to the valid entries (mode ids, -1 absent) of the levels'
     pivot arrays taken in order — as one kernel a configuration, no concatenation. Batches by vmap."""
     import jax
@@ -92,14 +137,14 @@ def parity_fn(real="double"):
 @functools.lru_cache(None)
 def parity_fits(real, n_modes):
     """Whether the parity kernel's four arrays a mode for `n_modes` modes fit the shared memory this device grants it
-    (cards with 99 KB a block do not take 32x32 lattices); `fast` uses batched._parity_modes otherwise."""
+    (cards with 99 KB a block do not take 32x32 lattices); `contract` uses its _parity_modes otherwise."""
     _load(real)
     return bool(ctypes.cdll.LoadLibrary(str(library_path(real))).front_cuda_parity_fits(int(n_modes)))
 
 
 @functools.lru_cache(None)
 def max_width(real="double"):
-    """The widest front the shared-memory kernels of the `real` library take on this device; `fast` sends wider
+    """The widest front the shared-memory kernels of the `real` library take on this device; `contract` sends wider
     ones to the global-memory kernels (`front_gfwd_kernel`, `front_gbwd_kernel`)."""
     _load(real)
     return int(ctypes.cdll.LoadLibrary(str(library_path(real))).front_cuda_max_width())
@@ -117,7 +162,7 @@ def fused_fn(key, tables, n, steps, u, root, d_max, u_max, fs, child_shape, n_ph
     where none), the largest entry the scan met; then `acc` unchanged. `acc`: the free vector's gradient accumulator
     threaded through the levels — the backward writes this level's free-source gradients into its cotangent's own
     buffer (the FFI output aliased to it) and returns that as `acc`'s cotangent, None for `free_flat`'s. `tables`: the
-    numpy arrays pc_off (nf + 1,), pc_desc (P, 4), pc_map (M,) — the assembly pieces, `fast._pieces` — bd_off (nf +
+    numpy arrays pc_off (nf + 1,), pc_desc (P, 4), pc_map (M,) — the assembly pieces, `contract._pieces` — bd_off (nf +
     1,), bd_pq (NB, 2), bd_val (NB,) — the bonds' constants — asrc (nf, n), msrc (nf, n), counts (nf, 3), ijtab, ijoff
     (the packed (i, j) per width). The adjoint runs the backward kernel, which writes the sources' gradients on
     `free_flat` and `childC` itself through a per-front table of `inv_pos` / `inv_sgn` — the one front entry each

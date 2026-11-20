@@ -76,7 +76,8 @@ def parse(argv=None):
 
 def main(argv=None):
     args = parse(argv)
-    from .. import distributed, measure
+    from .. import measure
+    from . import distributed
     distributed.initialize(quiet_followers=False)
     measure.set_matmul_precision(None if args.precision == "default" else args.precision)
     import nngtn as ng
@@ -106,7 +107,7 @@ def _reread(args, ng, measure, model, state, H):
     import jax
     import numpy as np
 
-    from .. import orderparams as op
+    from .. import obs
     with np.load(args.reread_series, allow_pickle=False) as z:
         series = {k: z[k] for k in z.files}
     more = ng.make_state(model.with_contraction(delay_slots=args.reread_slots), symm=args.symm,
@@ -116,8 +117,8 @@ def _reread(args, ng, measure, model, state, H):
         return 0
     report.update(series=args.reread_series, slots=args.delay_slots, reread_slots=args.reread_slots)
     tp = float(series.get("tprime", args.tprime))
-    before = op.assemble(series, args.Lx, args.Ly, tprime=tp)
-    after = op.assemble(out, args.Lx, args.Ly, tprime=tp)
+    before = obs.assemble(series, args.Lx, args.Ly, tprime=tp)
+    after = obs.assemble(out, args.Lx, args.Ly, tprime=tp)
     keys = ("E_per_site", "E_err", "var_per_site", "var_err", "Delta2_SC", "Delta2_SC_err", "M2_str", "M2_str_err")
     report["assembled"] = {k: {"measured": float(before[k]), "reread": float(after[k])}
                            for k in keys if k in before and k in after}

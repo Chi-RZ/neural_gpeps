@@ -5,7 +5,7 @@ from saved chains (`chains_in`) — and are then read `nsweeps` times, `sweeps` 
 each. Every sweep measures the selected `channels`:
 
 * `energy` — E_loc and E_loc^2 over the samples whose local energy is finite (the others counted);
-* `dwave` — F and G of the +x and +y bonds at the origin against every bond and site (`orderparams.DwaveTerms`);
+* `dwave` — F and G of the +x and +y bonds at the origin against every bond and site (`obs.DwaveTerms`);
 * `spin` — S^z S^z by FFT and the transverse terms of `nref` reference sites on the diagonal (`TransverseTerms`);
 * `charge` — the density correlation by FFT.
 
@@ -30,7 +30,7 @@ first array exists.
 
 Writes, for an output prefix `P`: `P-series.npz` (the per-sweep means, rewritten every `save_every` sweeps),
 `P-chains.npy` (the chains after the latest sweep read), and at the end `P.json` (the assembled scalars) and
-`P-maps.npz` (C_p, C_s, C_c and their errors). `orderparams.assemble` re-derives the scalars from the series alone.
+`P-maps.npz` (C_p, C_s, C_c and their errors). `obs.assemble` re-derives the scalars from the series alone.
 """
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def _one_bin(s0, s1):
 
 def psitilde_local_energy(state, H, s, stats=None):
     """The local energy of ONE configuration `s` (shape (1, 2N)) of psi-tilde: H's off-diagonal terms through
-    `orderparams.classified_sum` — an overflowed connected amplitude adds zero, a float32 ratio overflow its float64
+    `obs.classified_sum` — an overflowed connected amplitude adds zero, a float32 ratio overflow its float64
     value — plus the diagonal. `stats` collects the counts ("amplitude", "ratio", "other", "max_log_ratio", "own").
 
     A configuration whose OWN amplitude is not finite here has psi-tilde(s) = 0: it carries no weight, so its local
@@ -70,7 +70,7 @@ def psitilde_local_energy(state, H, s, stats=None):
     import quantax as qtx
     from quantax.sampler import Samples
 
-    from . import orderparams as op
+    from . import obs
     psi = state(s)
     own = np.asarray(qtx.utils.to_replicated_numpy(psi.logabs), np.float64)
     if not np.all(np.isfinite(own)):
@@ -78,7 +78,7 @@ def psitilde_local_energy(state, H, s, stats=None):
             stats["own"] = stats.get("own", 0) + 1
         return float("nan")
     smp = Samples(s, psi=psi)
-    off, _, _ = op.classified_sum(state, smp, H, _one_bin, 1, {} if stats is None else stats, psitilde=True)
+    off, _, _ = obs.classified_sum(state, smp, H, _one_bin, 1, {} if stats is None else stats, psitilde=True)
     diag = np.asarray(qtx.utils.to_replicated_numpy(H.apply_diag(s)))
     return float(np.real(diag)[0] + float(off[0]))
 
@@ -93,8 +93,8 @@ def measure(state, H, out_prefix, *, nparticles, nsamples=8192, nsweeps=64, ther
     import quantax as qtx
     from quantax.sampler import Samples
 
-    from . import orderparams as op
-    from .chains import load_chains
+    from . import obs
+    from .io import load_chains
     from .vmc import u1_mix_sampler
 
     channels = set(channels)
@@ -108,9 +108,9 @@ def measure(state, H, out_prefix, *, nparticles, nsamples=8192, nsweeps=64, ther
     Lx, Ly = int(state.model.Lx), int(state.model.Ly)
     N = Lx * Ly
     if qtx.get_sites().Nsites != N:
-        raise ValueError("quantax's lattice is not the model's: call lattice.make_sites first")
+        raise ValueError("quantax's lattice is not the model's: call make_sites first")
     nbar = sum(nparticles) / N
-    geo = op.Torus(Lx, Ly)
+    geo = obs.Torus(Lx, Ly)
     to_np = qtx.utils.to_replicated_numpy
     if chains_in is None or isinstance(chains_in, (str, os.PathLike)):
         chains_label = str(chains_in or "")
@@ -120,11 +120,11 @@ def measure(state, H, out_prefix, *, nparticles, nsamples=8192, nsweeps=64, ther
     series = dict(Lx=Lx, Ly=Ly, nbar=nbar, nsamples=nsamples, thermal=thermal, sweeps=sweeps, tprime=tprime,
                   chains_in=chains_label, **{k: str(v) for k, v in (extra or {}).items()})
     if "dwave" in channels:
-        dw = op.DwaveTerms(geo)
-        series["F_keys"], series["G_keys"] = op.keys_to_array(dw.F_keys, dw.G_keys)
+        dw = obs.DwaveTerms(geo)
+        series["F_keys"], series["G_keys"] = obs.keys_to_array(dw.F_keys, dw.G_keys)
     if "spin" in channels:
-        refs = op.reference_sites(Lx, Ly, nref)
-        tr = op.TransverseTerms(geo, refs)
+        refs = obs.reference_sites(Lx, Ly, nref)
+        tr = obs.TransverseTerms(geo, refs)
         series["ref_sites"] = np.array(refs)
     log(f"{Lx}x{Ly}, {jax.device_count()} devices over {jax.process_count()} processes; "
         f"channels={sorted(channels)}; {nsamples} samples a sweep, {nsweeps} sweeps, "
@@ -186,11 +186,11 @@ def measure(state, H, out_prefix, *, nparticles, nsamples=8192, nsweeps=64, ther
             flags["energy"] = bad_e
         if {"spin", "charge"} & channels:
             if "spin" in channels:
-                cur["Czz"] = to_np(op.autocorr(op.sz_grid(s, Lx, Ly)))
-                cur["sz_site"] = to_np(jnp.mean(op.sz_grid(s, Lx, Ly), axis=0))
+                cur["Czz"] = to_np(obs.autocorr(obs.sz_grid(s, Lx, Ly)))
+                cur["sz_site"] = to_np(jnp.mean(obs.sz_grid(s, Lx, Ly), axis=0))
             if "charge" in channels:
-                g = op.dn_grid(s, Lx, Ly, nbar)
-                cur["Cnn"] = to_np(op.autocorr(g))
+                g = obs.dn_grid(s, Lx, Ly, nbar)
+                cur["Cnn"] = to_np(obs.autocorr(g))
                 cur["n_site"] = to_np(jnp.mean(g, axis=0)) + nbar
         if "spin" in channels:
             T, bad, owner = tr.measure(state, samples)
@@ -231,7 +231,7 @@ def measure(state, H, out_prefix, *, nparticles, nsamples=8192, nsweeps=64, ther
     save()
     if not (writer and kept):
         return None
-    res = op.assemble({**series, **{k: np.stack(v) for k, v in rec.items()}}, Lx, Ly, tprime=tprime)
+    res = obs.assemble({**series, **{k: np.stack(v) for k, v in rec.items()}}, Lx, Ly, tprime=tprime)
     maps = {k: v for k, v in res.items() if isinstance(v, np.ndarray)}
     scalars = {k: v for k, v in res.items() if not isinstance(v, np.ndarray)}
     scalars.update(sweeps_kept=len(kept), sweeps_excluded=excluded, seconds=time.time() - t0,
@@ -269,7 +269,7 @@ def reread(state, state_more, H, series, *, log=None):
     import quantax as qtx
     from quantax.sampler import Samples
 
-    from . import orderparams as op
+    from . import obs
 
     if log is None:
         def log(msg):
@@ -282,15 +282,15 @@ def reread(state, state_more, H, series, *, log=None):
     N, nsamples = Lx * Ly, int(series["nsamples"])
     kept = [int(k) for k in series["kept"]]
     bad_spins, bad_meta = np.asarray(series["bad_spins"]), np.asarray(series["bad_meta"])
-    geo = op.Torus(Lx, Ly)
-    dw = op.DwaveTerms(geo) if "F" in series else None
-    tr = op.TransverseTerms(geo, [tuple(int(v) for v in a) for a in series["ref_sites"]]) if "Tpm" in series else None
+    geo = obs.Torus(Lx, Ly)
+    dw = obs.DwaveTerms(geo) if "F" in series else None
+    tr = obs.TransverseTerms(geo, [tuple(int(v) for v in a) for a in series["ref_sites"]]) if "Tpm" in series else None
     fixed = {k: np.array(series[k], np.float64) for k in ("E_mean", "E_sqr", "F", "G", "Tpm", "Tmp") if k in series}
     excluded = np.array(series.get("E_excluded", np.zeros(len(kept))), np.int64)
 
     def correlators(st, s, stats):
         smp = Samples(s, psi=st(s))
-        fn = partial(op.classified_sum, stats=stats, psitilde=True)
+        fn = partial(obs.classified_sum, stats=stats, psitilde=True)
         out = {}
         if dw is not None:
             F, G, _, _ = dw.measure(st, smp, sum_fn=fn)

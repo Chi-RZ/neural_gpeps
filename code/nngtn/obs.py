@@ -26,7 +26,7 @@ into one quantax operator, its connected configurations are built and evaluated 
 moves at most one electron of each spin. `packed_sum` is that loop; a term's bin is chosen by `bins(s, s')`.
 
 NON-FINITE TERMS.  A connected configuration whose amplitude is not finite — the sparse pivoted Pfaffian's overflowed
-front (`model.NeuralGTN.log_psi`) — contributes zero and is counted; the sample is kept. The counts are returned
+front (`state.NeuralGTN.log_psi`) — contributes zero and is counted; the sample is kept. The counts are returned
 beside every measurement.
 """
 from __future__ import annotations
