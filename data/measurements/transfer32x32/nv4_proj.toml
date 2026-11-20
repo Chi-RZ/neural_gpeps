@@ -1,0 +1,29 @@
+# The paper's 32x32 read of the unprojected 16x16 Nv = 4 state under the 8-image projection (Table II, row (P)): its
+# weights unchanged, the projection applied at evaluation only, float32 sampling and evaluation, 32 readings of 1024
+# samples, 4096 (4N) proposals a chain between readings, 64 delay slots. The paper's read continued chains already
+# sampled at these weights (40960 proposals from random chains, then 16384 more); this file starts from random
+# chains with the same 40960-proposal (40N) burn-in as the other three reads. The paper's numbers are
+# measurements/transfer32x32/results.json (scripts/transfer.py from readings.csv); a new read agrees with them statistically.
+#
+# `nngtn-measure --config` reads this file as it stands (run it from data/); command-line options override it.
+
+weights = "weights/unproj16x16-t0-nv4.eqx"
+Lx = 32
+Ly = 32
+nparticles = [448, 448]
+U = 8.0
+tprime = 0.0
+nv = 4
+symm = "flip0@flip1@spininverse"
+nsamples = 1024
+nsweeps = 32
+thermal = 40960               # burn-in proposals a chain, from random configurations
+sweeps = 4096                 # proposals a chain between readings
+seed = 1
+max_parallel = 128            # configurations a chunk per card, each evaluated at its 8 images
+channels = "energy"
+save_every = 4
+dtype = "float32"
+threshold = 0.05
+delay_slots = 64
+precision = "highest"         # every matmul at full float32 precision (no TF32)

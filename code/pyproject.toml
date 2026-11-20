@@ -1,0 +1,72 @@
+[project]
+name = "nngtn"
+version = "0.1.0"
+description = "t-t'-U Hubbard ground states on periodic tori with a neural Gaussian tensor-network state: sparse pivoted Pfaffian on the GPU, VMC optimisation and order-parameter measurement"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy==2.3.5",
+    "scipy==1.17.0",
+    "jax==0.11.2",
+    # the plugin and pjrt pinned to the EXACT jax version, so jax never falls back to the CPU silently
+    "jax-cuda12-plugin[with-cuda]==0.11.2",
+    "jax-cuda12-pjrt==0.11.2",
+    "quantax==0.4.0",
+    "equinox==0.13.4",
+    "lineax==0.1.0",
+    "fermix==0.1.0",
+    "lrux==0.2.0",
+]
+
+[project.scripts]
+nngtn-train = "nngtn.cli.train:main"
+nngtn-measure = "nngtn.cli.measure:main"
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["nngtn", "nngtn.pfaffian", "nngtn.cli"]
+
+[tool.setuptools.package-data]
+"nngtn.pfaffian" = ["*.cu"]
+"nngtn" = ["recipes/*.env"]
+
+[tool.uv]
+# Every library at the version the paper's runs used. The CUDA libraries matter for reproducibility: cuDNN and cuBLAS
+# choose the TF32 convolution and GEMM algorithms of the network, so a newer cuDNN can move log|psi| by round-off.
+constraint-dependencies = [
+    "colorama==0.4.6",
+    "equinox==0.13.4",
+    "fermix==0.1.0",
+    "jax==0.11.2",
+    "jax-cuda12-pjrt==0.11.2",
+    "jax-cuda12-plugin==0.11.2",
+    "jaxlib==0.11.2",
+    "jaxtyping==0.3.11",
+    "lineax==0.1.0",
+    "lrux==0.2.0",
+    "ml-dtypes==0.6.0",
+    "numpy==2.3.5",
+    "nvidia-cublas-cu12==12.8.4.1",
+    "nvidia-cuda-cupti-cu12==12.8.90",
+    "nvidia-cuda-nvcc-cu12==12.9.86",
+    "nvidia-cuda-nvrtc-cu12==12.8.93",
+    "nvidia-cuda-runtime-cu12==12.8.90",
+    "nvidia-cudnn-cu12==9.10.2.21",
+    "nvidia-cufft-cu12==11.3.3.83",
+    "nvidia-cusolver-cu12==11.7.3.90",
+    "nvidia-cusparse-cu12==12.5.8.93",
+    "nvidia-nccl-cu12==2.30.3",
+    "nvidia-nvjitlink-cu12==12.8.93",
+    "nvidia-nvshmem-cu12==3.4.5",
+    "opt-einsum==3.4.0",
+    "scipy==1.17.0",
+    "typing-extensions==4.16.0",
+    "wadler-lindig==0.1.7",
+]

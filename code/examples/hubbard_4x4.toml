@@ -1,0 +1,49 @@
+# A training config (nngtn.config), as a usage demo: the 4x4 Hubbard model at U = 8 and half filling, in two
+# stages of 100 steps — a cold start and a continuation that carries the weights, the chains and the step-norm decay
+# on. Not a converged ground state.
+#
+#   nngtn-train examples/hubbard_4x4.toml --stage cold --out runs/4x4
+#   nngtn-train examples/hubbard_4x4.toml --stage cont --out runs/4x4
+#
+# The exact ground-state energy is -0.529305 a site.
+
+name = "hubbard-4x4-u8"
+
+[network]
+nv = 3            # nngtn.NETWORKS[3]: 16 residual blocks, 91 channels padded to 92, res_scale 0.1
+net_seed = 0
+
+[lattice]
+Lx = 4
+Ly = 4
+n_particles = [8, 8]
+t = 1.0
+U = 8.0
+tprime = 0.0
+mu = 0.0
+
+[contraction]
+dtype = "float32"
+threshold = 0.05
+delay_slots = 20
+
+[[stage]]
+id = "cold"
+start = "random"
+steps = 100
+samples = 4096
+sweeps = 256
+thermal = 4096
+cap = { c0 = 0.5, t0 = 1000, decay = 1500 }
+max_parallel = [2048, 256]
+
+[[stage]]
+id = "cont"
+start = "cold"
+chains = "previous"            # the cold stage's chains, re-thermalised for one `sweeps`
+steps = 100
+samples = 4096
+sweeps = 256
+cap = { c0 = 0.5, t0 = 1000, decay = 1500 }
+cap_step_offset = 100          # the cap is read at step + 100: its schedule carries on
+max_parallel = [2048, 256]

@@ -1,0 +1,602 @@
+{
+ "format": 3,
+ "description": "the paper's projected states on the 16x16 and 16x4 tori at t' = 0, Nv = 3 and Nv = 4, and the two unprojected 16x16 states read on 32x32",
+ "code": {
+  "package": "nngtn",
+  "version": "0.1.0",
+  "path": "../code"
+ },
+ "conventions": {
+  "hamiltonian": "H = -t sum_<ij>,s (c+_is c_js + h.c.) - t' sum_<<ij>>,s (c+_is c_js + h.c.) + U sum_i n_i,up n_i,dn on the periodic Lx x Ly torus",
+  "site_index": "site (i, j) is i * Ly + j",
+  "configuration": "(2N,) int8 +-1 occupations, the N spin-up modes first",
+  "chains_npz": "bits = np.packbits(spins > 0, axis=-1), shape = (n_chains, 2N); nngtn.read_chains",
+  "weights": "equinox leaves of nngtn.build_model(Lx, Ly, nv=...) (trunk then head), float32",
+  "projection": "quantax Flip(axis=0) @ Flip(axis=1) @ SpinInverse(), trivial sector, 8 images",
+  "energies": "per site; errors are one standard error (largest block-jackknife error)"
+ },
+ "states": [
+  {
+   "name": "proj16x16-t0-nv3",
+   "lattice": {
+    "Lx": 16,
+    "Ly": 16,
+    "n_particles": [
+     112,
+     112
+    ],
+    "tprime": 0.0,
+    "t": 1.0,
+    "U": 8.0,
+    "hole_doping": 0.125
+   },
+   "network": {
+    "nv": 3,
+    "nblocks": 16,
+    "channels": 91,
+    "pad_channels": 92,
+    "res_scale": 0.1,
+    "parameters": 2396485,
+    "kernel": [
+     3,
+     3
+    ]
+   },
+   "projection": "flip0@flip1@spininverse",
+   "contraction": {
+    "dtype": "float32",
+    "threshold": 0.05,
+    "delay_slots": 20,
+    "training_matmul_precision": "default (TF32 trunk)",
+    "measurement_matmul_precision": "highest"
+   },
+   "training": {
+    "start": "weights trained on 16x4"
+   },
+   "paper": {
+    "where": "Table I",
+    "E_per_site": "-0.759835(14)",
+    "var_per_site": "0.0149(7)"
+   },
+   "chains": {
+    "source": "the measurement's end chains",
+    "n_chains": 8192
+   },
+   "files": {
+    "weights": {
+     "path": "weights/proj16x16-t0-nv3.eqx",
+     "sha256": "13026fc6401220b7f4967b013ec0b3e1419b0a9bc67e47e4c8d6ffeffe3ea04d"
+    },
+    "chains": {
+     "path": "weights/proj16x16-t0-nv3_spins.npz",
+     "sha256": "9c23a23050e36416e3fbcc6dbbfb01be11e23be6eee9ceb7c02250851cfde5de"
+    },
+    "measurement_config": {
+     "path": "measurements/proj16x16-t0-nv3/config.toml",
+     "sha256": "6dd4e676eb16ad05a413c6b990e538c2fbfc655d996867814d9b9caebbdf46b7"
+    },
+    "measurement_chains_in": {
+     "path": "measurements/proj16x16-t0-nv3/chains_in.npz",
+     "sha256": "c7115f8d812534e33204cfa59fd910d36aa85f207f67927259632834791b90c4"
+    },
+    "measurement_series": {
+     "path": "measurements/proj16x16-t0-nv3/series.npz",
+     "sha256": "65a398ae0355dc0ca47bcf85a767243f5bbd7528255cc384907a53ac321edc14"
+    },
+    "measurement_results": {
+     "path": "measurements/proj16x16-t0-nv3/results.json",
+     "sha256": "28eea78ecccfe0283c5c13c09ff90ac08a611917b6b84aa49cd3113e26e0d3e2"
+    }
+   },
+   "energy": {
+    "E_per_site": -0.7598353,
+    "E_err": 1.4e-05,
+    "var_per_site": 0.01487,
+    "var_err": 0.00072,
+    "source": "measurement"
+   },
+   "order_parameters": {
+    "Delta2_SC": 0.0001232586194652395,
+    "Delta2_SC_err": 1.265594524023174e-05,
+    "M2_str": 0.013874869082978983,
+    "M2_str_err": 7.758164011422457e-06
+   }
+  },
+  {
+   "name": "proj16x16-t0-nv4",
+   "lattice": {
+    "Lx": 16,
+    "Ly": 16,
+    "n_particles": [
+     112,
+     112
+    ],
+    "tprime": 0.0,
+    "t": 1.0,
+    "U": 8.0,
+    "hole_doping": 0.125
+   },
+   "network": {
+    "nv": 4,
+    "nblocks": 24,
+    "channels": 153,
+    "pad_channels": 160,
+    "res_scale": 0.02,
+    "parameters": 10144053,
+    "kernel": [
+     3,
+     3
+    ]
+   },
+   "projection": "flip0@flip1@spininverse",
+   "contraction": {
+    "dtype": "float64",
+    "threshold": 0.05,
+    "delay_slots": 20,
+    "training_matmul_precision": "default (TF32 trunk)",
+    "measurement_matmul_precision": "highest"
+   },
+   "training": {
+    "start": "weights trained on 16x4"
+   },
+   "paper": {
+    "where": "Table I, Fig. 3",
+    "E_per_site": "-0.760115(11)",
+    "var_per_site": "0.01287(24)"
+   },
+   "chains": {
+    "source": "the measurement's end chains",
+    "n_chains": 8192
+   },
+   "files": {
+    "weights": {
+     "path": "weights/proj16x16-t0-nv4.eqx",
+     "sha256": "b3f30b14f474b9ef3f20b30ab2d3e43631c8b3744048ea3ccb01de1980e2a73c"
+    },
+    "chains": {
+     "path": "weights/proj16x16-t0-nv4_spins.npz",
+     "sha256": "33378480512aeb99b25ba07c741527da1a9b94aa6b0aa8c003d0696021515256"
+    },
+    "measurement_config": {
+     "path": "measurements/proj16x16-t0-nv4/config.toml",
+     "sha256": "1e75421fee9c79516153585170fe47f6f1f37bbd8ef4dd8e70c34d5879f362c5"
+    },
+    "measurement_chains_in": {
+     "path": "measurements/proj16x16-t0-nv4/chains_in.npz",
+     "sha256": "6a5b34c758e20ed49c685a209a18d081924f48a1fb3d6dcab72cda8e78738f2b"
+    },
+    "measurement_series": {
+     "path": "measurements/proj16x16-t0-nv4/series.npz",
+     "sha256": "24896bf85609850e89de1c27ed27d9dedbf65a86b51a15d4a9a933c47eb9d2ee"
+    },
+    "measurement_results": {
+     "path": "measurements/proj16x16-t0-nv4/results.json",
+     "sha256": "f81d6fd066834f2d8d065f3d2f381dd724363de027d17c0d6da97fa5e0b9081e"
+    }
+   },
+   "energy": {
+    "E_per_site": -0.7601152,
+    "E_err": 1.1e-05,
+    "var_per_site": 0.01287,
+    "var_err": 0.00024,
+    "source": "measurement"
+   },
+   "order_parameters": {
+    "Delta2_SC": 0.0001365353764568589,
+    "Delta2_SC_err": 1.9608579032032695e-05,
+    "M2_str": 0.013725388524736329,
+    "M2_str_err": 1.0180920276325001e-05
+   }
+  },
+  {
+   "name": "proj16x4-t0-nv3",
+   "lattice": {
+    "Lx": 16,
+    "Ly": 4,
+    "n_particles": [
+     28,
+     28
+    ],
+    "tprime": 0.0,
+    "t": 1.0,
+    "U": 8.0,
+    "hole_doping": 0.125
+   },
+   "network": {
+    "nv": 3,
+    "nblocks": 16,
+    "channels": 91,
+    "pad_channels": 92,
+    "res_scale": 0.1,
+    "parameters": 2396485,
+    "kernel": [
+     3,
+     3
+    ]
+   },
+   "projection": "flip0@flip1@spininverse",
+   "contraction": {
+    "dtype": "float32",
+    "threshold": 0.05,
+    "delay_slots": 20,
+    "training_matmul_precision": "default (TF32 trunk)",
+    "measurement_matmul_precision": "highest"
+   },
+   "training": {
+    "start": "random weights"
+   },
+   "paper": {
+    "where": "Table G1",
+    "E_per_site": "-0.765883(26)",
+    "var_per_site": "0.0133(7)"
+   },
+   "chains": {
+    "source": "the measurement's end chains",
+    "n_chains": 8192
+   },
+   "files": {
+    "weights": {
+     "path": "weights/proj16x4-t0-nv3.eqx",
+     "sha256": "4729e13cfe103e6e85c0ff1d7c110881e9a2aaa109cc55a951bc8e47a939f2dc"
+    },
+    "chains": {
+     "path": "weights/proj16x4-t0-nv3_spins.npz",
+     "sha256": "950c656dd1c92561381ff38c530e772b70fa49bf3e85496dcf5e8c5f07908ca8"
+    },
+    "measurement_config": {
+     "path": "measurements/proj16x4-t0-nv3/config.toml",
+     "sha256": "a946506188ee8a92e4754ae5bb231621509ca98f0c306c130ed12160c4264258"
+    },
+    "measurement_chains_in": {
+     "path": "measurements/proj16x4-t0-nv3/chains_in.npz",
+     "sha256": "59654653674622e7d12185e6497f0932e0ad19135f37420bb2eb27c0b4c0a155"
+    },
+    "measurement_series": {
+     "path": "measurements/proj16x4-t0-nv3/series.npz",
+     "sha256": "0d390ea6d0e28859166209ad97b2386cc4dd90decb9e2041bed86119228267a0"
+    },
+    "measurement_results": {
+     "path": "measurements/proj16x4-t0-nv3/results.json",
+     "sha256": "326f537a31627883d7c5db3f179c853457cb9fa98c085561ea5feff1285894bf"
+    }
+   },
+   "energy": {
+    "E_per_site": -0.7658827,
+    "E_err": 2.6e-05,
+    "var_per_site": 0.01333,
+    "var_err": 0.00068,
+    "source": "measurement"
+   },
+   "order_parameters": {
+    "Delta2_SC": 0.0008183037672117829,
+    "Delta2_SC_err": 3.26210766012725e-05,
+    "M2_str": 0.03246381440379066,
+    "M2_str_err": 3.148167832000026e-05
+   }
+  },
+  {
+   "name": "proj16x4-t0-nv4",
+   "lattice": {
+    "Lx": 16,
+    "Ly": 4,
+    "n_particles": [
+     28,
+     28
+    ],
+    "tprime": 0.0,
+    "t": 1.0,
+    "U": 8.0,
+    "hole_doping": 0.125
+   },
+   "network": {
+    "nv": 4,
+    "nblocks": 24,
+    "channels": 153,
+    "pad_channels": 160,
+    "res_scale": 0.02,
+    "parameters": 10144053,
+    "kernel": [
+     3,
+     3
+    ]
+   },
+   "projection": "flip0@flip1@spininverse",
+   "contraction": {
+    "dtype": "float64",
+    "threshold": 0.05,
+    "delay_slots": 16,
+    "training_matmul_precision": "default (TF32 trunk)",
+    "measurement_matmul_precision": "highest"
+   },
+   "training": {
+    "start": "random weights"
+   },
+   "paper": {
+    "where": "Table G1, Fig. G1",
+    "E_per_site": "-0.766152(16)",
+    "var_per_site": "0.01095(42)",
+    "Delta2_SC": "8.4(4)e-4"
+   },
+   "chains": {
+    "source": "the measurement's end chains",
+    "n_chains": 8192
+   },
+   "files": {
+    "weights": {
+     "path": "weights/proj16x4-t0-nv4.eqx",
+     "sha256": "f7373c29fdf5a32d1607aba8602f0d1ea78e00651445ce8b4fce81c70d960ac8"
+    },
+    "chains": {
+     "path": "weights/proj16x4-t0-nv4_spins.npz",
+     "sha256": "fc6848094176c5d495f6858a5eee1c0e7832cd0e0eb8f79bc6ee8cf175315239"
+    },
+    "measurement_config": {
+     "path": "measurements/proj16x4-t0-nv4/config.toml",
+     "sha256": "9d658c30c9df7f10cfde8ccadf5c70978cc3ba031b79cbdf22dad36eeb87efb2"
+    },
+    "measurement_chains_in": {
+     "path": "measurements/proj16x4-t0-nv4/chains_in.npz",
+     "sha256": "e70139d53f122704ac3a85cc1604abced9f4c8469fe89b598fc9be2475679b12"
+    },
+    "measurement_series": {
+     "path": "measurements/proj16x4-t0-nv4/series.npz",
+     "sha256": "e7547f90190ccdfa836d732570297a32bc0bfd2129eea5e1106f83f07bf5cb7a"
+    },
+    "measurement_results": {
+     "path": "measurements/proj16x4-t0-nv4/results.json",
+     "sha256": "a62c0e6ab6590f33286fc9e14160d707e1cc8fd2548e016c2df9e6c5f496aafd"
+    }
+   },
+   "energy": {
+    "E_per_site": -0.7661518,
+    "E_err": 1.6e-05,
+    "var_per_site": 0.01095,
+    "var_err": 0.00042,
+    "source": "measurement"
+   },
+   "order_parameters": {
+    "Delta2_SC": 0.0008433336081820714,
+    "Delta2_SC_err": 4.141583021938737e-05,
+    "M2_str": 0.0324025215968215,
+    "M2_str_err": 2.699152255041685e-05
+   }
+  },
+  {
+   "name": "unproj16x16-t0-nv3",
+   "lattice": {
+    "Lx": 16,
+    "Ly": 16,
+    "n_particles": [
+     112,
+     112
+    ],
+    "tprime": 0.0,
+    "t": 1.0,
+    "U": 8.0,
+    "hole_doping": 0.125
+   },
+   "network": {
+    "nv": 3,
+    "nblocks": 16,
+    "channels": 91,
+    "pad_channels": 92,
+    "res_scale": 0.1,
+    "parameters": 2396485,
+    "kernel": [
+     3,
+     3
+    ]
+   },
+   "projection": null,
+   "contraction": {
+    "dtype": "float32",
+    "threshold": 0.05,
+    "delay_slots": 20,
+    "training_matmul_precision": "default (TF32 trunk)"
+   },
+   "training": {
+    "start": "weights trained on 16x4",
+    "continued_by": "proj16x16-t0-nv3 (the projected training starts from these weights)"
+   },
+   "paper": {
+    "where": "Table II, Table E1",
+    "E_per_site_32x32": "-0.757451(21)",
+    "var_per_site_32x32": "0.02407(51)",
+    "E_per_site_32x32_projected": "-0.758414(27)",
+    "var_per_site_32x32_projected": "0.01647(64)"
+   },
+   "chains": {
+    "source": "the 16x16 training's chains saved with these weights",
+    "n_chains": 8192
+   },
+   "files": {
+    "weights": {
+     "path": "weights/unproj16x16-t0-nv3.eqx",
+     "sha256": "234364948cea00f91b3015ea564f8603b89ffdb59645133f9cfd3171d558986c"
+    },
+    "chains": {
+     "path": "weights/unproj16x16-t0-nv3_spins.npz",
+     "sha256": "a8b7bbff2723aa2911ddc61d18945139d4844ccc53b3a790a2ae5be22a138e39"
+    }
+   }
+  },
+  {
+   "name": "unproj16x16-t0-nv4",
+   "lattice": {
+    "Lx": 16,
+    "Ly": 16,
+    "n_particles": [
+     112,
+     112
+    ],
+    "tprime": 0.0,
+    "t": 1.0,
+    "U": 8.0,
+    "hole_doping": 0.125
+   },
+   "network": {
+    "nv": 4,
+    "nblocks": 24,
+    "channels": 153,
+    "pad_channels": 160,
+    "res_scale": 0.02,
+    "parameters": 10144053,
+    "kernel": [
+     3,
+     3
+    ]
+   },
+   "projection": null,
+   "contraction": {
+    "dtype": "float64",
+    "threshold": 0.1,
+    "delay_slots": 24,
+    "training_matmul_precision": "default (TF32 trunk)"
+   },
+   "training": {
+    "start": "weights trained on 16x4",
+    "continued_by": "proj16x16-t0-nv4 (the projected training starts from these weights)"
+   },
+   "paper": {
+    "where": "Table II, Table E1",
+    "E_per_site_32x32": "-0.758019(22)",
+    "var_per_site_32x32": "0.02013(42)",
+    "E_per_site_32x32_projected": "-0.758727(33)",
+    "var_per_site_32x32_projected": "0.01606(82)"
+   },
+   "chains": {
+    "source": "the 16x16 training's chains saved with these weights",
+    "n_chains": 8192
+   },
+   "files": {
+    "weights": {
+     "path": "weights/unproj16x16-t0-nv4.eqx",
+     "sha256": "549e2da6015a4f6c786c33a1961997c3e12fec4f36f14544f6802183499624d0"
+    },
+    "chains": {
+     "path": "weights/unproj16x16-t0-nv4_spins.npz",
+     "sha256": "6617aa744b3e6ea4bd39136a98c08b16989bf214829138ba87fc315413796796"
+    }
+   }
+  }
+ ],
+ "transfer32x32": {
+  "description": "the unprojected 16x16 states read at exactly their weights on the 32x32 torus (U = 8, 448 + 448): float32 without and with the 8-image projection (Table II), and TF32 sampling with the TF32 and the reweighted float32 estimators on the same samples (Table E1); 1024 samples a reading",
+  "arms": {
+   "nv3_f32": {
+    "state": "unproj16x16-t0-nv3",
+    "projection": "none",
+    "sampling": "float32",
+    "estimator": "float32",
+    "readings": 64,
+    "E_per_site": -0.7574514849111438,
+    "E_err": 2.058646121257723e-05,
+    "var_per_site": 0.024074554638281676,
+    "var_err": 0.0005071876661645298
+   },
+   "nv4_f32": {
+    "state": "unproj16x16-t0-nv4",
+    "projection": "none",
+    "sampling": "float32",
+    "estimator": "float32",
+    "readings": 64,
+    "E_per_site": -0.758018801920116,
+    "E_err": 2.231993410108289e-05,
+    "var_per_site": 0.02013485824188077,
+    "var_err": 0.00041760561088508724
+   },
+   "nv3_proj": {
+    "state": "unproj16x16-t0-nv3",
+    "projection": "flip0@flip1@spininverse",
+    "sampling": "float32",
+    "estimator": "float32",
+    "readings": 32,
+    "E_per_site": -0.758414326235652,
+    "E_err": 2.690128915135139e-05,
+    "var_per_site": 0.01646569638716855,
+    "var_err": 0.0006415686587580192
+   },
+   "nv4_proj": {
+    "state": "unproj16x16-t0-nv4",
+    "projection": "flip0@flip1@spininverse",
+    "sampling": "float32",
+    "estimator": "float32",
+    "readings": 32,
+    "E_per_site": -0.7587271332740784,
+    "E_err": 3.307822792531709e-05,
+    "var_per_site": 0.016059447244970215,
+    "var_err": 0.0008190104016288482
+   },
+   "nv3_split": {
+    "state": "unproj16x16-t0-nv3",
+    "projection": "none",
+    "sampling": "tf32",
+    "estimator": "float32 reweighted",
+    "readings": 64,
+    "E_per_site": -0.75742859672755,
+    "E_err": 2.748511661326584e-05,
+    "var_per_site": 0.023975958301043043,
+    "var_err": 0.000758184471887112
+   },
+   "nv3_tf32": {
+    "state": "unproj16x16-t0-nv3",
+    "projection": "none",
+    "sampling": "tf32",
+    "estimator": "tf32",
+    "readings": 64,
+    "E_per_site": -0.7573964186012745,
+    "E_err": 3.6108305856544885e-05,
+    "var_per_site": 0.05573473722562028,
+    "var_err": 0.0008102858975067115
+   },
+   "nv4_split": {
+    "state": "unproj16x16-t0-nv4",
+    "projection": "none",
+    "sampling": "tf32",
+    "estimator": "float32 reweighted",
+    "readings": 64,
+    "E_per_site": -0.7580213220790029,
+    "E_err": 1.8001411585743317e-05,
+    "var_per_site": 0.020514206838689653,
+    "var_err": 0.0006827508338303332
+   },
+   "nv4_tf32": {
+    "state": "unproj16x16-t0-nv4",
+    "projection": "none",
+    "sampling": "tf32",
+    "estimator": "tf32",
+    "readings": 64,
+    "E_per_site": -0.7579787224531174,
+    "E_err": 2.790343577219693e-05,
+    "var_per_site": 0.047806690288553,
+    "var_err": 0.0007547943544387832
+   }
+  },
+  "files": {
+   "readings.csv": {
+    "path": "measurements/transfer32x32/readings.csv",
+    "sha256": "91e48180377629b507d4f1c680be2d17d8eee452e173f85a63f207a804276875"
+   },
+   "results.json": {
+    "path": "measurements/transfer32x32/results.json",
+    "sha256": "9098c47004ec88b44d6d08de2f22da3ed147504e7f3999d536a1b49965e6336f"
+   },
+   "nv3_f32.toml": {
+    "path": "measurements/transfer32x32/nv3_f32.toml",
+    "sha256": "68bd8a1b0562913977d0081e558e3433ab5e0d6b5f5025dcec5aaf31b9654011"
+   },
+   "nv4_f32.toml": {
+    "path": "measurements/transfer32x32/nv4_f32.toml",
+    "sha256": "ddde1bc9e3ab0b19c438668cc05c9128eb0b829c12971f3d414843cf5ddb19c7"
+   },
+   "nv3_proj.toml": {
+    "path": "measurements/transfer32x32/nv3_proj.toml",
+    "sha256": "aa9b9f8ad4d21898c396f27d9788dabeddad1fa1011521a9866aaf077a3e4290"
+   },
+   "nv4_proj.toml": {
+    "path": "measurements/transfer32x32/nv4_proj.toml",
+    "sha256": "6bb6b819532603dfe83008a7929d5a3964e2d5dddbdf7264d18e8be2a96f6201"
+   }
+  }
+ }
+}

@@ -1,0 +1,29 @@
+# The paper's measurement of this state: a float32 contraction at 32 delay slots. It started from the training's
+# output chains (measurements/proj16x16-t0-nv3/chains_in.npz); weights/proj16x16-t0-nv3_spins.npz are the chains
+# it ended with.
+#
+# `nngtn-measure --config` reads this file as it stands (run it from data/: paths are relative to data/);
+# command-line options override it.
+
+weights = "weights/proj16x16-t0-nv3.eqx"
+Lx = 16
+Ly = 16
+nparticles = [112, 112]
+U = 8.0
+tprime = 0.0
+nv = 3
+symm = "flip0@flip1@spininverse"
+chains_in = "measurements/proj16x16-t0-nv3/chains_in.npz"
+nsamples = 8192
+nsweeps = 64
+thermal = 10240               # burn-in proposals a chain, from chains_in
+sweeps = 1024                 # proposals a chain between sweeps
+seed = 1
+max_parallel = 256            # configurations a chunk per card, each evaluated at its 8 images
+nref = 8
+channels = "energy,dwave,spin,charge"
+save_every = 4
+dtype = "float32"
+threshold = 0.05
+delay_slots = 32
+precision = "highest"         # every matmul at full float32 precision (no TF32)
